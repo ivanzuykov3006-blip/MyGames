@@ -8,7 +8,6 @@ const App = () => {
   const [isSearching, setIsSearching] = useState(false);
   const [apiKey, setApiKey] = useState(''); // Пользователь должен ввести свой ключ RAWG
   
-  // Состояние личной библиотеки
   const [myGames, setMyGames] = useState(() => {
     const saved = localStorage.getItem('my_game_library');
     return saved ? JSON.parse(saved) : [];

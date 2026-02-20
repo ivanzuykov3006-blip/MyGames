@@ -1,0 +1,326 @@
+import React, { useState, useEffect } from 'react';
+import { Search, Plus, Trash2, Star, ChevronRight, ChevronLeft, Gamepad2, Trophy, MessageSquare, Save, X } from 'lucide-react';
+
+const App = () => {
+  // Состояние для поиска и API
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [apiKey, setApiKey] = useState(''); // Пользователь должен ввести свой ключ RAWG
+  
+  // Состояние личной библиотеки
+  const [myGames, setMyGames] = useState(() => {
+    const saved = localStorage.getItem('my_game_library');
+    return saved ? JSON.parse(saved) : [];
+  });
+
+  // Состояние модального окна для отзывов
+  const [selectedGame, setSelectedGame] = useState(null);
+  const [reviewText, setReviewText] = useState('');
+  const [rating, setRating] = useState(5);
+  const [activeTab, setActiveTab] = useState('library'); // 'library' or 'search'
+
+  // Сохранение в LocalStorage
+  useEffect(() => {
+    localStorage.setItem('my_game_library', JSON.stringify(myGames));
+  }, [myGames]);
+
+  // Функция поиска игр через RAWG API
+  const searchGames = async () => {
+    if (!searchQuery || !apiKey) return;
+    setIsSearching(true);
+    try {
+      const response = await fetch(`https://api.rawg.io/api/games?key=${apiKey}&search=${searchQuery}&platforms=4`); // 4 = PC
+      const data = await response.json();
+      setSearchResults(data.results || []);
+    } catch (error) {
+      console.error("Ошибка поиска:", error);
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  // Добавление игры в библиотеку
+  const addToLibrary = async (game) => {
+    if (myGames.find(g => g.id === game.id)) return;
+
+    // Подгружаем детали игры (скриншоты и описание)
+    try {
+      const detailRes = await fetch(`https://api.rawg.io/api/games/${game.id}?key=${apiKey}`);
+      const details = await detailRes.json();
+      
+      const newGame = {
+        id: game.id,
+        name: game.name,
+        background_image: game.background_image,
+        screenshots: details.short_screenshots || [],
+        description: details.description_raw || "Описание отсутствует",
+        playCount: 1,
+        rating: 0,
+        review: "",
+        dateAdded: new Date().toLocaleDateString()
+      };
+      
+      setMyGames([...myGames, newGame]);
+      setActiveTab('library');
+    } catch (err) {
+      console.error("Ошибка при получении деталей:", err);
+    }
+  };
+
+  const removeGame = (id) => {
+    setMyGames(myGames.filter(g => g.id !== id));
+  };
+
+  const updatePlayCount = (id, delta) => {
+    setMyGames(myGames.map(g => 
+      g.id === id ? { ...g, playCount: Math.max(1, g.playCount + delta) } : g
+    ));
+  };
+
+  const openReviewModal = (game) => {
+    setSelectedGame(game);
+    setReviewText(game.review || "");
+    setRating(game.rating || 5);
+  };
+
+  const saveReview = () => {
+    setMyGames(myGames.map(g => 
+      g.id === selectedGame.id ? { ...g, review: reviewText, rating: rating } : g
+    ));
+    setSelectedGame(null);
+  };
+
+  return (
+    <div className="min-h-screen bg-slate-950 text-slate-100 font-sans p-4 md:p-8">
+      {/* Шапка */}
+      <header className="max-w-6xl mx-auto mb-10 flex flex-col md:flex-row justify-between items-center gap-6">
+        <div className="flex items-center gap-3">
+          <div className="bg-indigo-600 p-3 rounded-xl shadow-lg shadow-indigo-500/20">
+            <Gamepad2 size={32} />
+          </div>
+          <h1 className="text-3xl font-black tracking-tight uppercase italic">Game<span className="text-indigo-500">Tracker</span></h1>
+        </div>
+
+        <nav className="flex bg-slate-900 p-1 rounded-full border border-slate-800">
+          <button 
+            onClick={() => setActiveTab('library')}
+            className={`px-6 py-2 rounded-full transition-all ${activeTab === 'library' ? 'bg-indigo-600 text-white' : 'hover:text-indigo-400'}`}
+          >
+            Моя библиотека ({myGames.length})
+          </button>
+          <button 
+            onClick={() => setActiveTab('search')}
+            className={`px-6 py-2 rounded-full transition-all ${activeTab === 'search' ? 'bg-indigo-600 text-white' : 'hover:text-indigo-400'}`}
+          >
+            Поиск игр
+          </button>
+        </nav>
+      </header>
+
+      <main className="max-w-6xl mx-auto">
+        {/* Секция поиска */}
+        {activeTab === 'search' && (
+          <div className="space-y-8 animate-in fade-in duration-500">
+            <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 shadow-xl">
+              <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
+                <Search size={20} className="text-indigo-400" /> Найти новую игру на ПК
+              </h2>
+              <div className="flex flex-col gap-4">
+                <div className="flex flex-col md:flex-row gap-3">
+                  <input 
+                    type="password" 
+                    placeholder="Введите ваш RAWG API Key..."
+                    className="bg-slate-950 border border-slate-700 px-4 py-3 rounded-xl flex-grow focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    value={apiKey}
+                    onChange={(e) => setApiKey(e.target.value)}
+                  />
+                  <a href="https://rawg.io/apidocs" target="_blank" className="text-xs text-slate-500 hover:underline py-1">Где взять ключ?</a>
+                </div>
+                <div className="flex gap-3">
+                  <input 
+                    type="text" 
+                    placeholder="Название игры (например, Cyberpunk 2077)..."
+                    className="bg-slate-950 border border-slate-700 px-4 py-3 rounded-xl flex-grow focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && searchGames()}
+                  />
+                  <button 
+                    onClick={searchGames}
+                    disabled={isSearching || !apiKey}
+                    className="bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 px-8 py-3 rounded-xl font-bold transition-colors"
+                  >
+                    {isSearching ? "Загрузка..." : "Поиск"}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+              {searchResults.map(game => (
+                <div key={game.id} className="bg-slate-900 rounded-2xl overflow-hidden border border-slate-800 group hover:border-indigo-500 transition-all shadow-lg">
+                  <div className="h-48 overflow-hidden relative">
+                    <img 
+                      src={game.background_image || 'https://via.placeholder.com/600x400?text=No+Image'} 
+                      alt={game.name} 
+                      className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-slate-900 to-transparent opacity-60"></div>
+                  </div>
+                  <div className="p-5">
+                    <h3 className="text-lg font-bold mb-3 truncate">{game.name}</h3>
+                    <button 
+                      onClick={() => addToLibrary(game)}
+                      disabled={myGames.some(g => g.id === game.id)}
+                      className="w-full flex items-center justify-center gap-2 bg-slate-800 hover:bg-indigo-600 disabled:bg-emerald-900 disabled:cursor-not-allowed py-2 rounded-lg transition-colors"
+                    >
+                      {myGames.some(g => g.id === game.id) ? "В библиотеке" : <><Plus size={18} /> Добавить</>}
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Секция библиотеки */}
+        {activeTab === 'library' && (
+          <div className="animate-in fade-in duration-500">
+            {myGames.length === 0 ? (
+              <div className="text-center py-20 bg-slate-900/50 rounded-3xl border border-dashed border-slate-800">
+                <Gamepad2 size={64} className="mx-auto text-slate-700 mb-4" />
+                <h2 className="text-2xl font-bold text-slate-500">Ваша библиотека пока пуста</h2>
+                <p className="text-slate-600 mt-2">Перейдите в поиск, чтобы добавить первую игру</p>
+                <button onClick={() => setActiveTab('search')} className="mt-6 text-indigo-400 font-bold hover:underline">Найти игры</button>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-8">
+                {myGames.map(game => (
+                  <div key={game.id} className="bg-slate-900 rounded-3xl overflow-hidden border border-slate-800 shadow-2xl flex flex-col lg:flex-row">
+                    {/* Левая часть: Изображение и счетчик */}
+                    <div className="lg:w-1/3 relative min-h-[300px]">
+                      <img 
+                        src={game.background_image} 
+                        className="absolute inset-0 w-full h-full object-cover" 
+                        alt={game.name}
+                      />
+                      <div className="absolute inset-0 bg-gradient-to-r from-transparent via-transparent to-slate-900 hidden lg:block"></div>
+                      <div className="absolute bottom-4 left-4 flex gap-2">
+                        <span className="bg-indigo-600 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-widest shadow-lg">PC Master Race</span>
+                      </div>
+                    </div>
+
+                    {/* Правая часть: Контент */}
+                    <div className="lg:w-2/3 p-6 md:p-8 flex flex-col justify-between">
+                      <div>
+                        <div className="flex justify-between items-start mb-4">
+                          <h2 className="text-3xl font-black">{game.name}</h2>
+                          <button onClick={() => removeGame(game.id)} className="text-slate-500 hover:text-red-500 transition-colors p-2">
+                            <Trash2 size={20} />
+                          </button>
+                        </div>
+
+                        <div className="flex flex-wrap gap-6 mb-8">
+                          {/* Счетчик прохождений */}
+                          <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 flex items-center gap-4">
+                            <Trophy className="text-amber-500" size={24} />
+                            <div>
+                              <p className="text-[10px] text-slate-500 uppercase font-bold tracking-tighter leading-none">Прохождений</p>
+                              <div className="flex items-center gap-3">
+                                <button onClick={() => updatePlayCount(game.id, -1)} className="hover:text-indigo-400"><ChevronLeft size={20}/></button>
+                                <span className="text-xl font-black w-4 text-center">{game.playCount}</span>
+                                <button onClick={() => updatePlayCount(game.id, 1)} className="hover:text-indigo-400"><ChevronRight size={20}/></button>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Ваша оценка */}
+                          <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 flex items-center gap-4">
+                            <Star className={game.rating > 0 ? "text-yellow-400 fill-yellow-400" : "text-slate-700"} size={24} />
+                            <div>
+                              <p className="text-[10px] text-slate-500 uppercase font-bold tracking-tighter leading-none">Ваш рейтинг</p>
+                              <p className="text-xl font-black">{game.rating || "—"}<span className="text-xs text-slate-600">/10</span></p>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Краткое описание или "отсебятина" */}
+                        <div className="mb-6">
+                          <h4 className="text-xs font-bold text-slate-500 uppercase mb-2 tracking-widest">Ваш отзыв</h4>
+                          <div className="bg-slate-800/30 p-4 rounded-xl italic text-slate-300 min-h-[60px] relative">
+                            {game.review ? game.review : "Вы еще не оставили личный отзыв об этой игре..."}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex justify-end">
+                        <button 
+                          onClick={() => openReviewModal(game)}
+                          className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 px-6 py-3 rounded-xl font-bold transition-all shadow-lg shadow-indigo-600/20"
+                        >
+                          <MessageSquare size={18} /> {game.review ? "Редактировать отзыв" : "Написать отзыв"}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </main>
+
+      {/* Модальное окно отзыва */}
+      {selectedGame && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-slate-900 w-full max-w-2xl rounded-3xl border border-slate-700 shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="p-6 border-b border-slate-800 flex justify-between items-center bg-slate-800/30">
+              <h3 className="text-xl font-bold">Отзыв: {selectedGame.name}</h3>
+              <button onClick={() => setSelectedGame(null)} className="text-slate-400 hover:text-white"><X /></button>
+            </div>
+            <div className="p-6 space-y-6">
+              <div>
+                <label className="block text-sm font-bold text-slate-400 mb-3 uppercase tracking-widest">Оценка по 10-бальной шкале</label>
+                <div className="flex gap-2 justify-between">
+                  {[1,2,3,4,5,6,7,8,9,10].map(num => (
+                    <button 
+                      key={num}
+                      onClick={() => setRating(num)}
+                      className={`w-10 h-10 rounded-lg font-bold transition-all ${rating === num ? 'bg-indigo-600 scale-110 shadow-lg shadow-indigo-600/40' : 'bg-slate-800 hover:bg-slate-700'}`}
+                    >
+                      {num}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-bold text-slate-400 mb-3 uppercase tracking-widest">Ваше мнение ("Отсебятина")</label>
+                <textarea 
+                  value={reviewText}
+                  onChange={(e) => setReviewText(e.target.value)}
+                  placeholder="Опишите свои впечатления, геймплей, графику или просто крик души..."
+                  className="w-full bg-slate-950 border border-slate-800 rounded-2xl p-4 h-40 focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
+                />
+              </div>
+
+              <button 
+                onClick={saveReview}
+                className="w-full bg-indigo-600 hover:bg-indigo-500 py-4 rounded-xl font-bold text-lg flex items-center justify-center gap-2 transition-all"
+              >
+                <Save size={20} /> Сохранить изменения
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <footer className="max-w-6xl mx-auto mt-20 py-8 border-t border-slate-900 text-center text-slate-600 text-sm">
+        <p>Данные предоставлены RAWG.IO API • 2024 Сделано для геймеров</p>
+      </footer>
+    </div>
+  );
+};
+
+export default App;
